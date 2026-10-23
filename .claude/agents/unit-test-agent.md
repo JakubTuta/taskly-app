@@ -29,7 +29,9 @@ them, prove they pass, and report every decision. You change **test files only**
    Do not read or print environment variables, credential files or anything outside the repository.
 5. **Every test you keep must pass** in the full-suite verification run, twice. A test that
    fails because the source is buggy is removed from your change and reported instead.
-6. Use only the commands the skills document. Do not install packages.
+6. Use only the commands the skills document, one command per Bash call: no `&&`, `;`, `cd`,
+   redirections or heredocs (they are denied in CI). Inspect files with Read, Grep and Glob and
+   change them with Edit and Write. Do not install packages.
 
 # Workflow
 

@@ -106,6 +106,15 @@ def test_agent_text_is_neutralized(report, payload, forbidden):
     assert forbidden not in report.render(context(agent=agent))
 
 
+def test_identical_failures_are_grouped(report):
+    failures = [{"test": f"page > case {i}", "message": "Error: No QueryClient set\n    at useQueryClient"} for i in range(5)]
+    failures.append({"test": "other > case", "message": "AssertionError: expected 1 to be 2"})
+    assert report.grouped_failures(failures) == [
+        "page > case 0 (+4 more with the same error)\n    Error: No QueryClient set\n        at useQueryClient",
+        "other > case\n    AssertionError: expected 1 to be 2",
+    ]
+
+
 def test_unsafe_paths_are_not_rendered_as_code(report):
     assert report.path_cell("backend/app/x.py") == "`backend/app/x.py`"
     assert report.path_cell("a`b <script>") == "a\\`b &lt;script&gt;"

@@ -162,6 +162,7 @@ jobs:
 
       - name: Snapshot the workspace
         run: |
+          [ -e package.json ] || printf '{\n  "private": true\n}\n' > package.json
           git -c user.name=unit-test-agent -c user.email=unit-test-agent@localhost add -A
           git -c user.name=unit-test-agent -c user.email=unit-test-agent@localhost commit -q --allow-empty --no-verify -m "workspace snapshot"
 

@@ -200,6 +200,18 @@ def coverage_section(ctx: dict) -> list[str]:
     return [*lines, ""]
 
 
+def grouped_failures(failures: list[dict], limit: int = 6) -> list[str]:
+    groups: dict[str, list[str]] = {}
+    for failure in failures:
+        message = "\n    ".join(str(failure.get("message", "")).strip().splitlines()[:4])[:400]
+        groups.setdefault(message, []).append(str(failure.get("test", "")))
+    lines = []
+    for message, tests in list(groups.items())[:limit]:
+        more = f" (+{len(tests) - 1} more with the same error)" if len(tests) > 1 else ""
+        lines.append(f"{tests[0]}{more}\n    {message}")
+    return lines
+
+
 def verification_section(ctx: dict) -> list[str]:
     verify = ctx["verify"]
     if not verify:
@@ -215,8 +227,7 @@ def verification_section(ctx: dict) -> list[str]:
         lines.append(f"| {name} | {SUITE_ICONS.get(suite.get('status'), '❔')} {plain(suite.get('status'), 20)} | "
                      f"{tests.get('passed', 0)} | {tests.get('failed', 0)} | {tests.get('skipped', 0)} | "
                      f"{suite.get('runs', 1)} | {pct(totals.get('lines_pct'))} |")
-        for failure in suite.get("failures", [])[:10]:
-            failures.append(f"{failure.get('test')}\n    {str(failure.get('message', ''))[:500]}")
+        failures += grouped_failures(suite.get("failures", []))
         for test in suite.get("flaky", [])[:10]:
             failures.append(f"FLAKY {test}")
     typecheck = verify.get("typecheck")
