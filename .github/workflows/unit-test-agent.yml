@@ -349,6 +349,7 @@ jobs:
       contents: write
       pull-requests: write
       actions: write
+      statuses: write
     env:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       HEAD_REF: ${{ github.event.pull_request.head.ref }}
@@ -402,6 +403,9 @@ jobs:
           if git push --quiet origin "HEAD:${HEAD_REF}"; then
             sha=$(git rev-parse HEAD)
             echo "{\"status\": \"committed\", \"commit\": \"$sha\"}" > ../results/publish/publish.json
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/statuses/${sha}" -f state=success \
+              -f context="Unit test agent" -f target_url="$RUN_URL" \
+              -f description="Generated tests passed the policy gate and two clean test runs" > /dev/null
             gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" || echo "::warning::Could not start CI for the new commit."
           else
             echo '{"status": "push_failed"}' > ../results/publish/publish.json
