@@ -1,5 +1,8 @@
 # Taskly App
 
+Pull requests are covered by a unit-test agent (Claude Code) that creates or updates tests for
+changed code, verifies them and reports on the pull request. See [SOLUTION.md](SOLUTION.md).
+
 ## Setup
 
 ```sh
