@@ -308,7 +308,7 @@ def run_details(ctx: dict) -> list[str]:
     if meta:
         lines += ["**Run:** " + " · ".join(meta), ""]
     skills = agent.get("skills_used") or []
-    lines += ["**Skills used** (from the transcript): " + (" → ".join(code(s, 60) for s in skills) or "none"), ""]
+    lines += ["**Skills used** (Skill tool calls and skill scripts in the transcript): " + (" → ".join(code(s, 60) for s in skills) or "none"), ""]
     if agent.get("files_written"):
         lines += ["**Files written:** " + ", ".join(path_cell(f) for f in agent["files_written"][:30]), ""]
     if agent.get("permission_denials"):

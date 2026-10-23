@@ -26,7 +26,7 @@ def test_derives_skills_commands_and_files_from_tool_calls(transcript):
          "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "curl x"}}]},
     )
     summary = transcript.summarize(["not json", *lines])
-    assert summary["skills_used"] == ["analyze-pr-changes", "backend-unit-tests"]
+    assert summary["skills_used"] == ["analyze-pr-changes", "run-tests", "backend-unit-tests"]
     assert summary["commands"] == ["python3 .claude/skills/run-tests/scripts/run_tests.py backend/tests"]
     assert summary["files_written"] == ["backend/tests/test_new.py"]
     assert (summary["tool_calls"], summary["tool_errors"]) == (6, 1)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -14,6 +15,7 @@ turns, cost and the schema-validated structured output."""
 
 MAX_COMMANDS = 60
 MAX_COMMAND_CHARS = 240
+SKILL_SCRIPT = re.compile(r"\.claude/skills/([\w-]+)/scripts/")
 
 
 def relative(path: str, cwd: str | None) -> str:
@@ -61,8 +63,13 @@ def summarize(lines: list[str]) -> dict:
                     skill = tool_input.get("skill") or tool_input.get("command")
                     if skill and skill not in summary["skills_used"]:
                         summary["skills_used"].append(skill)
-                elif name == "Bash" and len(summary["commands"]) < MAX_COMMANDS:
-                    summary["commands"].append(str(tool_input.get("command", ""))[:MAX_COMMAND_CHARS])
+                elif name == "Bash":
+                    command = str(tool_input.get("command", ""))
+                    for skill in SKILL_SCRIPT.findall(command):
+                        if skill not in summary["skills_used"]:
+                            summary["skills_used"].append(skill)
+                    if len(summary["commands"]) < MAX_COMMANDS:
+                        summary["commands"].append(command[:MAX_COMMAND_CHARS])
                 elif name in ("Edit", "Write") and tool_input.get("file_path"):
                     path = relative(tool_input["file_path"], cwd)
                     if path not in summary["files_written"]:
