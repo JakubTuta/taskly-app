@@ -50,6 +50,11 @@ def plain(value: object, limit: int = 400) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def code(value: object, limit: int = 60) -> str:
+    text = str(value or "")
+    return f"`{text}`" if re.match(r"^[\w.:@/-]{1,%d}$" % limit, text) else plain(text, limit)
+
+
 def path_cell(value: object) -> str:
     text = str(value or "")
     return f"`{text}`" if SAFE_PATH.match(text) else plain(text, 120)
@@ -87,7 +92,7 @@ def headline(ctx: dict) -> str:
         reason = "it stopped before returning a result"
         result = (agent or {}).get("result") or {}
         if result.get("subtype") and result.get("subtype") != "success":
-            reason = f"it stopped with `{plain(result['subtype'], 40)}`"
+            reason = f"it stopped with {code(result['subtype'], 40)}"
         return f"⚠️ **The agent did not finish** ({reason}). Nothing was published."
     if guard and not guard.get("ok"):
         return "❌ **The policy gate rejected the generated changes.** Nothing was published."
@@ -125,7 +130,7 @@ def overview(ctx: dict) -> list[str]:
                                       f"{s['none']} test files, {s['skip']} not unit-testable"))
     structured = ((agent or {}).get("result") or {}).get("structured_output") or {}
     if structured.get("outcome"):
-        rows.append(("Agent outcome", f"`{plain(structured['outcome'], 40)}`"))
+        rows.append(("Agent outcome", f"{code(structured['outcome'], 40)}"))
     if verify:
         parts = []
         for name, suite in verify.get("suites", {}).items():
@@ -248,9 +253,9 @@ def gate_section(ctx: dict) -> list[str]:
         return []
     lines = ["### Policy gate", ""]
     for item in guard.get("violations", [])[:20]:
-        lines.append(f"- ❌ `{plain(item.get('rule'), 40)}` {path_cell(item.get('path'))}: {plain(item.get('detail'), 200)}")
+        lines.append(f"- ❌ {code(item.get('rule'), 40)} {path_cell(item.get('path'))}: {plain(item.get('detail'), 200)}")
     for item in guard.get("warnings", [])[:20]:
-        lines.append(f"- ⚠️ `{plain(item.get('rule'), 40)}` {path_cell(item.get('path'))}: {plain(item.get('detail'), 200)}")
+        lines.append(f"- ⚠️ {code(item.get('rule'), 40)} {path_cell(item.get('path'))}: {plain(item.get('detail'), 200)}")
     return [*lines, ""]
 
 
@@ -291,7 +296,7 @@ def run_details(ctx: dict) -> list[str]:
         lines += [f"**Summary:** {plain(structured['summary'], 1200)}", ""]
     meta = []
     if agent.get("model"):
-        meta.append(f"model `{plain(agent['model'], 60)}`")
+        meta.append(f"model {code(agent['model'], 60)}")
     if agent.get("claude_code_version"):
         meta.append(f"Claude Code {plain(agent['claude_code_version'], 20)}")
     if result.get("num_turns") is not None:
@@ -303,7 +308,7 @@ def run_details(ctx: dict) -> list[str]:
     if meta:
         lines += ["**Run:** " + " · ".join(meta), ""]
     skills = agent.get("skills_used") or []
-    lines += ["**Skills used** (from the transcript): " + (" → ".join(f"`{plain(s, 60)}`" for s in skills) or "none"), ""]
+    lines += ["**Skills used** (from the transcript): " + (" → ".join(code(s, 60) for s in skills) or "none"), ""]
     if agent.get("files_written"):
         lines += ["**Files written:** " + ", ".join(path_cell(f) for f in agent["files_written"][:30]), ""]
     if agent.get("permission_denials"):
