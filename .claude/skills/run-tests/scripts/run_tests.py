@@ -327,6 +327,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout", type=int, default=600, help="Per-run timeout in seconds.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_DIR / "test-results.json")
     args = parser.parse_args(argv)
+    args.output = args.output.resolve()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 

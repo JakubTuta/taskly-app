@@ -81,6 +81,21 @@ def test_stable_runs_keep_their_status(runner):
     assert runner.merge_runs([run, dict(run)])["status"] == "passed"
 
 
+def test_relative_output_paths_are_resolved_before_runners_change_directory(runner, tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_backend(targets, coverage, out_dir, index, timeout):
+        seen["out_dir"] = out_dir
+        return {"exit_code": 0, "tests": {"total": 1, "passed": 1, "failed": 0, "skipped": 0},
+                "failures": [], "statuses": {"t": "passed"}, "output_tail": ""}
+
+    monkeypatch.setattr(runner, "run_backend", fake_backend)
+    monkeypatch.chdir(tmp_path)
+    assert runner.main(["--suite", "backend", "--output", "reports/results.json"]) == 0
+    assert seen["out_dir"] == tmp_path.resolve() / "reports"
+    assert (tmp_path / "reports/results.json").exists()
+
+
 def test_assigns_target_paths_to_suites(runner):
     assert runner.split_targets(["backend/tests/test_a.py", "frontend/src/a.test.ts"]) == {
         "backend": ["backend/tests/test_a.py"],

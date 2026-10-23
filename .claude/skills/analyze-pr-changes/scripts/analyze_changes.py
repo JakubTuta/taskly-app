@@ -250,6 +250,9 @@ def main(argv: list[str] | None = None) -> int:
     coverage.add_argument("--coverage-from", type=Path, help="Reuse a run_tests.py results file.")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args(argv)
+    args.output = args.output.resolve()
+    if args.coverage_from:
+        args.coverage_from = args.coverage_from.resolve()
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
@@ -325,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
             if cov.get("partial_changed_lines"):
                 detail += f" untested branches on lines: {cov['partial_changed_lines']}."
             print(f"- [{entry['action']}] {entry['path']} ({entry['kind']}) → {entry['tests']['suggested']}.{detail}")
-    print(f"Analysis: {args.output.relative_to(REPO_ROOT).as_posix() if args.output.is_absolute() else args.output}")
+    print(f"Analysis: {args.output.as_posix()}")
     return 0
 
 

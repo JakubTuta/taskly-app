@@ -151,6 +151,15 @@ def test_end_to_end_analysis_of_working_tree_changes(analyze, repository):
     assert analysis["summary"]["suites"] == ["backend", "frontend"]
 
 
+def test_accepts_relative_paths_and_outputs_outside_the_repository(analyze, repository, tmp_path_factory, monkeypatch):
+    (repository / "backend/app/service.py").write_text("def a():\n    return 2\n", encoding="utf-8")
+    (repository / "results.json").write_text(json.dumps({"suites": {}}), encoding="utf-8")
+    outside = tmp_path_factory.mktemp("runner-temp") / "analysis-after.json"
+    monkeypatch.chdir(repository / "backend")
+    assert analyze.main(["--base", "main", "--coverage-from", "../results.json", "--output", str(outside)]) == 0
+    assert json.loads(outside.read_text(encoding="utf-8"))["summary"]["write_tests"] == 1
+
+
 def test_documentation_only_changes_do_not_require_the_agent(analyze, repository):
     (repository / "README.md").write_text("changed\n", encoding="utf-8")
     output = repository / "analysis.json"
