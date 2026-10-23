@@ -1,0 +1,431 @@
+name: Unit test agent
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+
+permissions: {}
+
+concurrency:
+  group: unit-test-agent-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "22"
+  CLAUDE_CODE_VERSION: "2.1.308"
+  TRUSTED: ${{ github.workspace }}/../trusted
+
+jobs:
+  analyze:
+    name: Analyze changes
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-test-agent')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      agent_required: ${{ steps.analyze.outputs.agent_required }}
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out agent tooling from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: .trusted-checkout
+          sparse-checkout: |
+            .claude
+            .github/test-agent
+          persist-credentials: false
+
+      - name: Use trusted agent tooling
+        run: bash .trusted-checkout/.github/test-agent/scripts/use_trusted_tooling.sh
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q -r backend/requirements.txt
+          npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+
+      - name: Analyze changes and baseline coverage
+        id: analyze
+        run: |
+          if git log -1 --format=%B "$HEAD_SHA" | grep -qF '[skip test-agent]'; then
+            echo "Head commit was produced by the agent; skipping."
+            echo "agent_required=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 .claude/skills/analyze-pr-changes/scripts/analyze_changes.py \
+            --base "$BASE_SHA" --head "$HEAD_SHA" --run-coverage --output .test-agent/analysis.json
+          required=$(python3 -c "import json; print(str(json.load(open('.test-agent/analysis.json'))['summary']['agent_required']).lower())")
+          echo "agent_required=$required" >> "$GITHUB_OUTPUT"
+
+      - name: Upload analysis
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: analysis
+          path: |
+            .test-agent/analysis.json
+            .test-agent/baseline-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  generate:
+    name: Generate tests (Claude Code agent)
+    needs: analyze
+    if: needs.analyze.outputs.agent_required == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out agent tooling from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: .trusted-checkout
+          sparse-checkout: |
+            .claude
+            .github/test-agent
+          persist-credentials: false
+
+      - name: Use trusted agent tooling
+        run: bash .trusted-checkout/.github/test-agent/scripts/use_trusted_tooling.sh
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q -r backend/requirements.txt
+          npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+
+      - name: Install Claude Code and the Bash sandbox
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap socat
+          if [ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null)" = "1" ]; then
+            printf '%s\n' 'abi <abi/4.0>,' 'include <tunables/global>' \
+              'profile bwrap /usr/bin/bwrap flags=(unconfined) {' '  userns,' '}' | sudo tee /etc/apparmor.d/bwrap > /dev/null
+            sudo apparmor_parser -r /etc/apparmor.d/bwrap
+          fi
+          npm install -g --no-audit --no-fund "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+          claude --version
+
+      - name: Download analysis
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: analysis
+          path: .test-agent
+
+      - name: Snapshot the workspace
+        run: |
+          git -c user.name=unit-test-agent -c user.email=unit-test-agent@localhost add -A
+          git -c user.name=unit-test-agent -c user.email=unit-test-agent@localhost commit -q --allow-empty --no-verify -m "workspace snapshot"
+
+      - name: Run the unit-test agent
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_SUBPROCESS_ENV_SCRUB: "1"
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+          DISABLE_AUTOUPDATER: "1"
+          AGENT_MODEL: ${{ vars.TEST_AGENT_MODEL }}
+          MAX_TURNS: ${{ vars.TEST_AGENT_MAX_TURNS || '80' }}
+          MAX_BUDGET_USD: ${{ vars.TEST_AGENT_MAX_BUDGET_USD || '2' }}
+        run: |
+          [ -n "$ANTHROPIC_API_KEY" ] || unset ANTHROPIC_API_KEY
+          [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] || unset CLAUDE_CODE_OAUTH_TOKEN
+          if [ -z "${ANTHROPIC_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "::error::Set the ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN repository secret."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/agent"
+          prompt=$(sed -e "s/{{BASE_SHA}}/$BASE_SHA/g" -e "s/{{HEAD_SHA}}/$HEAD_SHA/g" "$TRUSTED/.github/test-agent/prompt.md")
+          args=(
+            -p "$prompt"
+            --agent unit-test-agent
+            --settings "$TRUSTED/.github/test-agent/claude-settings.json"
+            --permission-mode dontAsk
+            --strict-mcp-config --mcp-config '{"mcpServers":{}}'
+            --max-turns "$MAX_TURNS"
+            --max-budget-usd "$MAX_BUDGET_USD"
+            --output-format stream-json --verbose
+            --json-schema "$(cat "$TRUSTED/.github/test-agent/result-schema.json")"
+          )
+          if [ -n "$AGENT_MODEL" ]; then args+=(--model "$AGENT_MODEL"); fi
+          set +e
+          claude "${args[@]}" > "$RUNNER_TEMP/agent/transcript.jsonl" 2> "$RUNNER_TEMP/agent/stderr.log"
+          code=$?
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -n 20 "$RUNNER_TEMP/agent/stderr.log" || true
+          python3 "$TRUSTED/.github/test-agent/scripts/summarize_transcript.py" "$RUNNER_TEMP/agent/transcript.jsonl" \
+            --exit-code "$code" --output "$RUNNER_TEMP/agent/agent-result.json"
+
+      - name: Export the agent's changes
+        if: always() && steps.agent.outcome == 'success'
+        run: |
+          git add -A
+          git diff --cached --binary HEAD > "$RUNNER_TEMP/agent/tests.patch"
+          python3 "$TRUSTED/.claude/skills/validate-test-changes/scripts/check_test_changes.py" \
+            --patch "$RUNNER_TEMP/agent/tests.patch" --output "$RUNNER_TEMP/agent/guard.json" || true
+
+      - name: Upload agent output
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: agent-output
+          path: ${{ runner.temp }}/agent
+          if-no-files-found: ignore
+          retention-days: 14
+
+  verify:
+    name: Verify generated tests
+    needs: [analyze, generate]
+    if: needs.generate.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    outputs:
+      verified: ${{ steps.result.outputs.verified }}
+    steps:
+      - name: Check out pull request head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.HEAD_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out agent tooling from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: .trusted-checkout
+          sparse-checkout: |
+            .claude
+            .github/test-agent
+          persist-credentials: false
+
+      - name: Use trusted agent tooling
+        run: bash .trusted-checkout/.github/test-agent/scripts/use_trusted_tooling.sh
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -q -r backend/requirements.txt
+          npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+
+      - name: Download agent output
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: agent-output
+          path: ${{ runner.temp }}/agent
+
+      - name: Apply the patch behind the policy gate
+        id: gate
+        run: |
+          mkdir -p "$RUNNER_TEMP/verify"
+          patch="$RUNNER_TEMP/agent/tests.patch"
+          [ -f "$patch" ] || : > "$patch"
+          set +e
+          python3 .claude/skills/validate-test-changes/scripts/check_test_changes.py \
+            --patch "$patch" --output "$RUNNER_TEMP/verify/guard.json"
+          gate=$?
+          set -e
+          echo "passed=$([ $gate -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if [ $gate -eq 0 ] && [ -s "$patch" ]; then
+            git apply --whitespace=nowarn "$patch"
+          fi
+
+      - name: Run both suites twice with coverage and type-checking
+        id: tests
+        if: steps.gate.outputs.passed == 'true'
+        run: |
+          set +e
+          python3 .claude/skills/run-tests/scripts/run_tests.py --suite all --coverage --typecheck --repeat 2 \
+            --output "$RUNNER_TEMP/verify/test-results.json"
+          echo "passed=$([ $? -eq 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          files=$(git diff --name-only HEAD -- 'frontend/src/*.ts' 'frontend/src/*.tsx'; git ls-files -o --exclude-standard -- 'frontend/src/*.ts' 'frontend/src/*.tsx')
+          if [ -n "$files" ]; then
+            node frontend/node_modules/prettier/bin/prettier.cjs --check $files
+            echo "format=$([ $? -eq 0 ] && echo passed || echo failed)" >> "$GITHUB_OUTPUT"
+          else
+            echo "format=skipped" >> "$GITHUB_OUTPUT"
+          fi
+          python3 .claude/skills/analyze-pr-changes/scripts/analyze_changes.py --base "$BASE_SHA" \
+            --coverage-from "$RUNNER_TEMP/verify/test-results.json" --output "$RUNNER_TEMP/verify/analysis-after.json"
+
+      - name: Record the verdict
+        id: result
+        if: always()
+        env:
+          GATE: ${{ steps.gate.outputs.passed }}
+          TESTS: ${{ steps.tests.outputs.passed }}
+          FORMAT: ${{ steps.tests.outputs.format }}
+        run: |
+          verified=false
+          if [ "$GATE" = true ] && [ "$TESTS" = true ] && [ "$FORMAT" != failed ]; then verified=true; fi
+          echo "verified=$verified" >> "$GITHUB_OUTPUT"
+          echo "${FORMAT:-skipped}" > "$RUNNER_TEMP/verify/format-status.txt"
+          [ "$verified" = true ] || { echo "::error::Generated tests did not pass verification."; exit 1; }
+
+      - name: Upload verification results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: verify-output
+          path: ${{ runner.temp }}/verify
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish:
+    name: Publish results to the pull request
+    needs: [analyze, generate, verify]
+    if: always() && needs.analyze.result != 'skipped' && needs.analyze.result != 'cancelled'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      MODE: ${{ vars.TEST_AGENT_MODE || 'commit' }}
+      VERIFIED: ${{ needs.verify.outputs.verified }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out agent tooling from the base branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.BASE_SHA }}
+          path: trusted
+          sparse-checkout: |
+            .claude/skills/validate-test-changes
+            .github/test-agent
+          persist-credentials: false
+
+      - name: Download results
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          path: results
+
+      - name: Check out the pull request branch
+        if: env.VERIFIED == 'true' && env.MODE == 'commit'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          path: pr
+          fetch-depth: 1
+
+      - name: Commit verified tests to the pull request branch
+        id: commit
+        if: env.VERIFIED == 'true' && env.MODE == 'commit'
+        run: |
+          patch="$PWD/results/agent-output/tests.patch"
+          mkdir -p results/publish
+          if [ ! -s "$patch" ]; then echo '{"status": "no_changes"}' > results/publish/publish.json; exit 0; fi
+          python3 trusted/.claude/skills/validate-test-changes/scripts/check_test_changes.py --patch "$patch"
+          cd pr
+          if [ "$(git rev-parse HEAD)" != "$HEAD_SHA" ]; then
+            echo '{"status": "stale"}' > ../results/publish/publish.json
+            exit 0
+          fi
+          git apply --whitespace=nowarn "$patch"
+          git add -A
+          git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q --no-verify -m "test: add unit tests for PR #${PR_NUMBER} (unit-test agent)" \
+            -m "Generated by the unit-test agent and verified in workflow run ${RUN_URL}." -m "[skip test-agent]"
+          if git push --quiet origin "HEAD:${HEAD_REF}"; then
+            sha=$(git rev-parse HEAD)
+            echo "{\"status\": \"committed\", \"commit\": \"$sha\"}" > ../results/publish/publish.json
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$HEAD_REF" || echo "::warning::Could not start CI for the new commit."
+          else
+            echo '{"status": "push_failed"}' > ../results/publish/publish.json
+          fi
+
+      - name: Render the report
+        if: always()
+        run: |
+          r=results
+          python3 trusted/.github/test-agent/scripts/render_report.py \
+            --analysis "$r/analysis/analysis.json" \
+            --agent "$r/agent-output/agent-result.json" \
+            --guard "$r/verify-output/guard.json" \
+            --verify "$r/verify-output/test-results.json" \
+            --analysis-after "$r/verify-output/analysis-after.json" \
+            --publish "$r/publish/publish.json" \
+            --patch "$r/agent-output/tests.patch" \
+            --format-status "$(cat "$r/verify-output/format-status.txt" 2>/dev/null || echo skipped)" \
+            --run-url "$RUN_URL" \
+            --output report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post or update the pull request comment
+        if: always()
+        run: |
+          existing=$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate \
+            --jq '[.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- unit-test-agent-report -->")))][0].id // empty')
+          if [ -n "$existing" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing}" -F body=@report.md > /dev/null
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" -F body=@report.md > /dev/null
+          fi

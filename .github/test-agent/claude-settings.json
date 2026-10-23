@@ -1,0 +1,64 @@
+{
+  "permissions": {
+    "defaultMode": "dontAsk",
+    "allow": [
+      "Read(./**)",
+      "Glob",
+      "Grep",
+      "Skill",
+      "TodoWrite",
+      "Edit(backend/tests/**)",
+      "Edit(frontend/src/**/*.test.ts)",
+      "Edit(frontend/src/**/*.test.tsx)",
+      "Edit(frontend/src/test/**)",
+      "Bash(python3 .claude/skills/analyze-pr-changes/scripts/analyze_changes.py)",
+      "Bash(python3 .claude/skills/analyze-pr-changes/scripts/analyze_changes.py *)",
+      "Bash(python3 .claude/skills/run-tests/scripts/run_tests.py)",
+      "Bash(python3 .claude/skills/run-tests/scripts/run_tests.py *)",
+      "Bash(python3 .claude/skills/validate-test-changes/scripts/check_test_changes.py)",
+      "Bash(python3 .claude/skills/validate-test-changes/scripts/check_test_changes.py *)",
+      "Bash(node frontend/node_modules/prettier/bin/prettier.cjs --write *)",
+      "Bash(node frontend/node_modules/prettier/bin/prettier.cjs --check *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git status)",
+      "Bash(git status *)"
+    ],
+    "deny": [
+      "WebFetch",
+      "WebSearch",
+      "Agent",
+      "NotebookEdit",
+      "Edit(.claude/**)",
+      "Edit(.github/**)",
+      "Edit(backend/app/**)",
+      "Read(//proc/**)",
+      "Read(//sys/**)",
+      "Read(//etc/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.config/**)",
+      "Read(~/.claude/**)",
+      "Read(**/.env)",
+      "Bash(git push *)",
+      "Bash(git config *)",
+      "Bash(git remote *)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "allowUnsandboxedCommands": false,
+    "autoAllowBashIfSandboxed": false,
+    "network": {
+      "allowedDomains": []
+    },
+    "filesystem": {
+      "denyRead": ["~/.ssh", "~/.config", "~/.claude"]
+    }
+  },
+  "disableAllHooks": true,
+  "enableAllProjectMcpServers": false
+}

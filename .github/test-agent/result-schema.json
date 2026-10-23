@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["outcome", "summary", "decisions", "suspected_bugs"],
+  "properties": {
+    "outcome": {
+      "type": "string",
+      "enum": ["tests_added", "tests_updated", "tests_added_and_updated", "no_changes_needed", "blocked"]
+    },
+    "summary": {
+      "type": "string",
+      "maxLength": 1200
+    },
+    "decisions": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "decision", "test_files", "reason"],
+        "properties": {
+          "file": { "type": "string", "maxLength": 300 },
+          "decision": { "type": "string", "enum": ["created_tests", "updated_tests", "no_change", "skipped"] },
+          "test_files": { "type": "array", "maxItems": 10, "items": { "type": "string", "maxLength": 300 } },
+          "reason": { "type": "string", "maxLength": 400 }
+        }
+      }
+    },
+    "suspected_bugs": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "description"],
+        "properties": {
+          "file": { "type": "string", "maxLength": 300 },
+          "description": { "type": "string", "maxLength": 600 }
+        }
+      }
+    }
+  }
+}
