@@ -80,18 +80,6 @@ def to_repo_path(path: str | Path) -> str:
         return Path(path).as_posix()
 
 
-def compress_lines(lines: list[int]) -> str:
-    """Render [1, 2, 3, 7] as "1-3, 7" so reports stay short."""
-    ranges: list[str] = []
-    for line in sorted(set(lines)):
-        if ranges and int(ranges[-1].split("-")[-1]) == line - 1:
-            start = ranges[-1].split("-")[0]
-            ranges[-1] = f"{start}-{line}"
-        else:
-            ranges.append(str(line))
-    return ", ".join(ranges)
-
-
 def parse_junit(path: Path) -> tuple[dict[str, int], list[dict[str, str]], dict[str, str]]:
     root = ET.parse(path).getroot()
     suites = [root] if root.tag == "testsuite" else list(root.iter("testsuite"))
