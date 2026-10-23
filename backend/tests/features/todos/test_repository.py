@@ -98,6 +98,21 @@ def test_delete_returns_false_without_committing_when_task_is_missing(session):
     session.commit.assert_not_called()
 
 
+def test_delete_completed_removes_only_completed_tasks_and_returns_the_count(session):
+    session.execute.return_value.rowcount = 3
+    assert TodoRepository(session).delete_completed() == 3
+    statement = session.execute.call_args.args[0]
+    compiled = str(statement.compile(dialect=postgresql.dialect()))
+    assert compiled.startswith("DELETE FROM todos WHERE todos.completed IS true")
+    assert [name for name, _, _ in session.mock_calls[:1]] == ["execute"]
+    session.commit.assert_called_once_with()
+
+
+def test_delete_completed_returns_zero_when_nothing_matches(session):
+    session.execute.return_value.rowcount = 0
+    assert TodoRepository(session).delete_completed() == 0
+
+
 def test_delete_removes_the_task_and_commits(session, stored):
     assert TodoRepository(session).delete(7) is True
     session.get.assert_called_once_with(TodoRecord, 7)

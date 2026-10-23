@@ -2,11 +2,13 @@ import { useState } from 'react'
 import { Alert, Button } from '../../design-system'
 import { SuccessNotice } from '../../components/SuccessNotice'
 import { useNotice } from '../../hooks/useNotice'
+import { ClearCompletedButton } from './components/ClearCompletedButton'
 import { DeleteTodoDialog } from './components/DeleteTodoDialog'
 import { TodoEditor } from './components/TodoEditor'
 import { TodoFilters } from './components/TodoFilters'
 import { TodoList } from './components/TodoList'
 import { TodosHeader } from './components/TodosHeader'
+import { useClearCompletedMutation } from './hooks/useClearCompletedMutation'
 import { useTodoFilters } from './hooks/useTodoFilters'
 import { useTodosBusy } from './hooks/useTodosBusy'
 import { useTodosQuery } from './hooks/useTodosQuery'
@@ -18,11 +20,13 @@ export function TodosPage() {
   const todos = todosQuery.data ?? []
   const filters = useTodoFilters(todos)
   const toggleTodo = useUpdateTodoMutation()
+  const clearCompleted = useClearCompletedMutation()
   const busy = useTodosBusy()
   const { message, notify } = useNotice()
   const [editor, setEditor] = useState<Todo | 'new' | null>(null)
   const [deleting, setDeleting] = useState<Todo | null>(null)
-  const error = toggleTodo.error ?? todosQuery.error
+  const error = toggleTodo.error ?? clearCompleted.error ?? todosQuery.error
+  const completedCount = todos.filter((todo) => todo.completed).length
 
   async function toggle(todo: Todo) {
     if (busy) return
@@ -40,8 +44,19 @@ export function TodosPage() {
       // Display the mutation error in the page alert.
     }
   }
+  async function clear() {
+    if (busy) return
+    const result = await clearCompleted.mutateAsync().catch(() => null)
+    if (!result) return
+    notify(
+      result.deleted === 1
+        ? 'Cleared 1 completed task.'
+        : `Cleared ${result.deleted} completed tasks.`,
+    )
+  }
   async function retry() {
     toggleTodo.reset()
+    clearCompleted.reset()
     await todosQuery.refetch()
   }
 
@@ -59,6 +74,11 @@ export function TodosPage() {
           onFilterChange={filters.setFilter}
           onSearchChange={filters.setSearch}
           onSortChange={filters.setSort}
+        />
+        <ClearCompletedButton
+          count={completedCount}
+          disabled={busy}
+          onClear={() => void clear()}
         />
         {error && (
           <Alert variant="warning">
