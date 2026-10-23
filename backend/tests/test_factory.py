@@ -29,6 +29,7 @@ def test_exposes_health_and_todo_routes(resolve):
         ("/api/health", "GET"),
         ("/api/todos", "GET"),
         ("/api/todos", "POST"),
+        ("/api/todos/completed", "DELETE"),
         ("/api/todos/{todo_id}", "GET"),
         ("/api/todos/{todo_id}", "PATCH"),
         ("/api/todos/{todo_id}", "DELETE"),

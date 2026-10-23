@@ -53,6 +53,14 @@ it('sends only the provided fields in a partial update', async () => {
   })
 })
 
+it('clears completed tasks and returns the deleted count', async () => {
+  vi.mocked(request).mockResolvedValue({ deleted: 2 })
+  await expect(todosApi.clearCompleted()).resolves.toEqual({ deleted: 2 })
+  expect(request).toHaveBeenCalledWith('/todos/completed', {
+    method: 'DELETE',
+  })
+})
+
 it('deletes a task by id', async () => {
   vi.mocked(request).mockResolvedValue(undefined)
   await expect(todosApi.remove(7)).resolves.toBeUndefined()

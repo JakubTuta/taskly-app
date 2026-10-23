@@ -36,6 +36,16 @@ def test_invalid_create_never_calls_repository(client, repository_mock, payload)
     repository_mock.create.assert_not_called()
 
 
+@pytest.mark.parametrize("deleted", [0, 4])
+def test_clear_completed_returns_the_deleted_count(client, repository_mock, deleted):
+    repository_mock.delete_completed.return_value = deleted
+    response = client.delete("/api/todos/completed")
+    assert response.status_code == 200
+    assert response.json() == {"deleted": deleted}
+    repository_mock.delete_completed.assert_called_once_with()
+    repository_mock.delete.assert_not_called()
+
+
 def test_get_returns_the_requested_task(client, repository_mock, todo):
     repository_mock.get.return_value = todo
     response = client.get("/api/todos/7")
