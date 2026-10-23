@@ -211,7 +211,7 @@ def run_frontend(targets: list[str], coverage: bool, out_dir: Path, run_index: i
     command = [node_executable(), str(vitest), "run", "--reporter=default", "--reporter=json", f"--outputFile.json={report}"]
     if coverage:
         command += [
-            "--coverage", "--coverage.reporter=json", "--coverage.reporter=json-summary",
+            "--coverage", "--coverage.reportOnFailure", "--coverage.reporter=json", "--coverage.reporter=json-summary",
             "--coverage.reporter=text-summary", f"--coverage.reportsDirectory={cov_dir}",
         ]
     command += [str(Path(t).relative_to("frontend").as_posix()) if Path(t).parts[:1] == ("frontend",) else t for t in targets]

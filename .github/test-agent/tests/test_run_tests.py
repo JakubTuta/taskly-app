@@ -96,6 +96,20 @@ def test_relative_output_paths_are_resolved_before_runners_change_directory(runn
     assert (tmp_path / "reports/results.json").exists()
 
 
+def test_frontend_coverage_is_reported_even_when_tests_fail(runner, tmp_path, monkeypatch):
+    commands = []
+    monkeypatch.setattr(runner, "execute", lambda command, cwd, timeout: commands.append(command) or {
+        "command": "", "exit_code": 1, "duration_s": 0, "output_tail": ""})
+    monkeypatch.setattr(runner, "node_executable", lambda: "node")
+    vitest = tmp_path / "node_modules/vitest/vitest.mjs"
+    vitest.parent.mkdir(parents=True)
+    vitest.touch()
+    monkeypatch.setattr(runner, "FRONTEND", tmp_path)
+    runner.run_frontend(["frontend/src/a.test.ts"], True, tmp_path, 0, 60)
+    assert "--coverage.reportOnFailure" in commands[0]
+    assert commands[0][-1] == "src/a.test.ts"
+
+
 def test_assigns_target_paths_to_suites(runner):
     assert runner.split_targets(["backend/tests/test_a.py", "frontend/src/a.test.ts"]) == {
         "backend": ["backend/tests/test_a.py"],
