@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 .claude/skills/analyze-pr-changes/scripts/analyze_changes.py *)",
+      "Bash(python3 .claude/skills/run-tests/scripts/run_tests.py *)",
+      "Bash(python3 .claude/skills/validate-test-changes/scripts/check_test_changes.py *)",
+      "Bash(python .claude/skills/analyze-pr-changes/scripts/analyze_changes.py *)",
+      "Bash(python .claude/skills/run-tests/scripts/run_tests.py *)",
+      "Bash(python .claude/skills/validate-test-changes/scripts/check_test_changes.py *)",
+      "Bash(node frontend/node_modules/prettier/bin/prettier.cjs --write *)",
+      "Bash(node frontend/node_modules/prettier/bin/prettier.cjs --check *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Edit(./.env)"
+    ]
+  }
+}
